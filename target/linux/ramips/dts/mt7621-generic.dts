@@ -1,0 +1,336 @@
+/dts-v1/;
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/interrupt-controller/arm-gic.h>
+
+/ {
+	compatible = "mediatek,mt7621-soc\0generic,mt7621-board";
+	model = "MT7621A Generic Board";
+	#address-cells = <1>;
+	#size-cells = <1>;
+
+	memory@0 {
+		device_type = "memory";
+		reg = <0x0 0x8000000>; /* 128MB DDR3 */
+	};
+
+	chosen {
+		bootargs = "console=ttyS0,115200n8 root=/dev/mtdblock3 rootfstype=squashfs,jffs2";
+	};
+
+	cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		cpu@0 {
+			compatible = "mips,mips1004Kc";
+			reg = <0>;
+		};
+
+		cpu@1 {
+			compatible = "mips,mips1004Kc";
+			reg = <1>;
+		};
+	};
+
+	clkctrl: clock-controller@10000000 {
+		compatible = "mediatek,mt7621-clk";
+		reg = <0x10000000 0x100>;
+		#clock-cells = <1>;
+	};
+
+	rstctrl: reset-controller@10000100 {
+		compatible = "mediatek,mt7621-reset";
+		reg = <0x10000100 0x100>;
+		#reset-cells = <1>;
+	};
+
+	palmbus: palmbus@1E000000 {
+		compatible = "mediatek,palmbus";
+		reg = <0x1e000000 0x100000>;
+		ranges = <0 0x1e000000 0xfffff>;
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		sysc: system-controller@0 {
+			compatible = "mediatek,mt7621-sysc";
+			reg = <0x0 0x100>;
+		};
+
+		wdt: watchdog@100 {
+			compatible = "mediatek,mt7621-wdt";
+			reg = <0x100 0x100>;
+			clocks = <&clkctrl 1>;
+		};
+
+		gpio: gpio-controller@600 {
+			compatible = "mediatek,mt7621-gpio";
+			reg = <0x600 0x100>;
+			gpio-controller;
+			#gpio-cells = <2>;
+			interrupt-parent = <&gic>;
+			interrupts = <GIC_SPI 12 IRQ_TYPE_LEVEL_HIGH>;
+		};
+
+		spi: spi@b00 {
+			compatible = "mediatek,mt7621-spi";
+			reg = <0xb00 0x100>;
+			clocks = <&clkctrl 18>;
+			resets = <&rstctrl 18>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "okay";
+
+			flash@0 {
+				compatible = "jedec,spi-nor";
+				reg = <0>;
+				spi-max-frequency = <10000000>;
+				m25p,fast-read;
+
+				partitions {
+					compatible = "fixed-partitions";
+					#address-cells = <1>;
+					#size-cells = <1>;
+
+					partition@0 {
+						label = "u-boot";
+						reg = <0x0 0x30000>;
+						read-only;
+					};
+
+					partition@30000 {
+						label = "u-boot-env";
+						reg = <0x30000 0x10000>;
+					};
+
+					partition@40000 {
+						label = "factory";
+						reg = <0x40000 0x10000>;
+						read-only;
+						
+						/* 校准数据分区 */
+						nvmem-layout {
+							compatible = "fixed-layout";
+							#address-cells = <1>;
+							#size-cells = <1>;
+
+							mac_eth0: mac@0 {
+								reg = <0x0 0x6>;
+							};
+
+							mac_wlan0: mac@8 {
+								reg = <0x8 0x6>;
+							};
+
+							eeprom_wlan0: eeprom@1000 {
+								reg = <0x1000 0x400>;
+							};
+
+							eeprom_wlan1: eeprom@5000 {
+								reg = <0x5000 0x400>;
+							};
+
+							eeprom_wlan2: eeprom@9000 {
+								reg = <0x9000 0x400>;
+							};
+						};
+					};
+
+					partition@50000 {
+						label = "firmware";
+						reg = <0x50000 0xfb0000>;
+					};
+				};
+			};
+		};
+
+		uart0: serial@c00 {
+			compatible = "ns16550a";
+			reg = <0xc00 0x100>;
+			reg-shift = <2>;
+			reg-io-width = <4>;
+			clocks = <&clkctrl 12>;
+			interrupt-parent = <&gic>;
+			interrupts = <GIC_SPI 10 IRQ_TYPE_LEVEL_HIGH>;
+			status = "okay";
+		};
+	};
+
+	/* 以太网接口 */
+	ethernet: ethernet@1E100000 {
+		compatible = "mediatek,mt7621-eth";
+		reg = <0x1e100000 0x10000>;
+		interrupt-parent = <&gic>;
+		interrupts = <GIC_SPI 21 IRQ_TYPE_LEVEL_HIGH>;
+		resets = <&rstctrl 21>;
+		mediatek,switch = <&gsw>;
+		mediatek,portmap = "llllw"; /* 4LAN+1WAN */
+		nvmem-cells = <&mac_eth0>;
+		nvmem-cell-names = "mac-address";
+
+		mdio: mdio-bus {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			phy0: ethernet-phy@0 {
+				reg = <0>;
+				phy-mode = "rgmii";
+			};
+		};
+	};
+
+	/* 千兆交换机 */
+	gsw: gsw@1E110000 {
+		compatible = "mediatek,mt7621-gsw";
+		reg = <0x1e110000 0x8000>;
+		interrupt-parent = <&gic>;
+		interrupts = <GIC_SPI 22 IRQ_TYPE_LEVEL_HIGH>;
+	};
+
+	/* 3个PCIe接口 */
+	pcie: pcie@1E140000 {
+		compatible = "mediatek,mt7621-pci";
+		reg = <0x1e140000 0x100
+		       0x1e142000 0x100  /* PCIe2配置区 */
+		       0x1e144000 0x100>; /* PCIe1配置区 */
+		device_type = "pci";
+		bus-range = <0 31>;
+		#address-cells = <3>;
+		#size-cells = <2>;
+		status = "okay";
+
+		/* 时钟配置 */
+		clocks = <&clkctrl 14>, <&clkctrl 15>, <&clkctrl 16>;
+		clock-names = "pcie0", "pcie1", "pcie2";
+
+		/* 复位配置 */
+		resets = <&rstctrl 14>, <&rstctrl 15>, <&rstctrl 16>;
+		reset-names = "pcie0", "pcie1", "pcie2";
+
+		/* 中断配置 */
+		interrupt-parent = <&gic>;
+		interrupts = <GIC_SPI 14 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 15 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 16 IRQ_TYPE_LEVEL_HIGH>;
+
+		/* 地址映射 */
+		ranges = <0x02000000 0 0x60000000 0x60000000 0 0x10000000>, /* PCIe0 */
+			 <0x02010000 0 0x70000000 0x70000000 0 0x10000000>, /* PCIe1 */
+			 <0x02020000 0 0x80000000 0x80000000 0 0x10000000>; /* PCIe2 */
+
+		/* PCIe0: 2.4G无线 (MT7603E) */
+		pcie0 {
+			reg = <0x0000 0 0 0 0>;
+			#address-cells = <3>;
+			#size-cells = <2>;
+			device_type = "pci";
+
+			wlan0: mt7603e@0,0 {
+				compatible = "mediatek,mt7603e";
+				reg = <0x0000 0 0 0 0>;
+				nvmem-cells = <&eeprom_wlan0>, <&mac_wlan0>;
+				nvmem-cell-names = "eeprom", "mac-address";
+				ieee80211-freq-limit = <2400000 2500000>; /* 2.4GHz频段 */
+				mediatek,led-pin = <&gpio 14 GPIO_ACTIVE_LOW>; /* WLAN2G LED */
+			};
+		};
+
+		/* PCIe1: 5G无线1 (MT7612E) */
+		pcie1 {
+			reg = <0x0800 0 0 0 0>;
+			#address-cells = <3>;
+			#size-cells = <2>;
+			device_type = "pci";
+
+			wlan1: mt7612e@1,0 {
+				compatible = "mediatek,mt7612e";
+				reg = <0x0000 0 0 0 0>;
+				nvmem-cells = <&eeprom_wlan1>;
+				nvmem-cell-names = "eeprom";
+				ieee80211-freq-limit = <5150000 5850000>; /* 5GHz频段 */
+				mediatek,led-pin = <&gpio 16 GPIO_ACTIVE_LOW>; /* WLAN5G LED */
+			};
+		};
+
+		/* PCIe2: 5G无线2 (MT7612E) */
+		pcie2 {
+			reg = <0x1000 0 0 0 0>;
+			#address-cells = <3>;
+			#size-cells = <2>;
+			device_type = "pci";
+
+			wlan2: mt7612e@2,0 {
+				compatible = "mediatek,mt7612e";
+				reg = <0x0000 0 0 0 0>;
+				nvmem-cells = <&eeprom_wlan2>;
+				nvmem-cell-names = "eeprom";
+				ieee80211-freq-limit = <5150000 5850000>; /* 5GHz频段 */
+				mediatek,led-pin = <&gpio 16 GPIO_ACTIVE_LOW>; /* 共享5G LED */
+			};
+		};
+	};
+
+	/* USB3.0控制器 */
+	usb3: usb@1E1C0000 {
+		compatible = "mediatek,mt7621-xhci";
+		reg = <0x1e1c0000 0x1000 0x1e1d0700 0x100>;
+		reg-names = "mac", "ippc";
+		clocks = <&clkctrl 20>;
+		interrupt-parent = <&gic>;
+		interrupts = <GIC_SPI 20 IRQ_TYPE_LEVEL_HIGH>;
+		status = "okay";
+	};
+
+	/* LED配置 */
+	leds {
+		compatible = "gpio-leds";
+
+		power {
+			label = "board:blue:power";
+			gpios = <&gpio 18 GPIO_ACTIVE_LOW>;
+			default-state = "on";
+		};
+
+		wan {
+			label = "board:blue:wan";
+			gpios = <&gpio 19 GPIO_ACTIVE_LOW>;
+		};
+
+		lan {
+			label = "board:blue:lan";
+			gpios = <&gpio 20 GPIO_ACTIVE_LOW>;
+		};
+
+		usb {
+			label = "board:blue:usb";
+			gpios = <&gpio 21 GPIO_ACTIVE_LOW>;
+			trigger-sources = <&usb3>;
+			linux,default-trigger = "usbport";
+		};
+	};
+
+	/* 按键配置 */
+	keys {
+		compatible = "gpio-keys";
+
+		reset {
+			label = "reset";
+			gpios = <&gpio 17 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_RESTART>;
+		};
+
+		wps {
+			label = "wps";
+			gpios = <&gpio 22 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_WPS_BUTTON>;
+		};
+	};
+
+	/* 中断控制器 */
+	gic: interrupt-controller@1FBC0000 {
+		compatible = "mediatek,mt7621-gic";
+		reg = <0x1fbc0000 0x2000>;
+		#interrupt-cells = <3>;
+		interrupt-controller;
+	};
+};
