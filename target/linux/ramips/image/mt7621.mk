@@ -2081,3 +2081,14 @@ define Device/zte_e8820s
   DEVICE_PACKAGES := kmod-mt7603 kmod-mt76x2 kmod-usb3 kmod-usb-ledtrig-usbport
 endef
 TARGET_DEVICES += zte_e8820s
+
+define Device/mt7621-generic
+  $(Device/dsa-migration)
+  $(Device/uimage-lzma-loader)
+  IMAGE_SIZE := 16064k
+  DEVICE_VENDOR := Generic
+  DEVICE_MODEL := MT7621A-Board
+  DEVICE_DTS := mt7621-generic
+  SUPPORTED_DEVICES += mt7621
+endef
+TARGET_DEVICES += mt7621-generic
